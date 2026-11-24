@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14202b">
+<title>RoadMark</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#14202b;--panel:#1c2a37;--line:#2c3e4f;--fg:#eef3f7;--muted:#9fb0bf;--good:#22b35e;--mid:#f2c230;--bad:#e5483f;--unk:#8a96a3;--accent:#3d8bfd}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:15px/1.35 system-ui,-apple-system,Roboto,sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+#app{position:fixed;inset:0;display:flex;flex-direction:column}
+#map,#cv{position:absolute;inset:0;background:#dfe5ea}
+#cv{display:none;width:100%;height:100%}
+#mapwrap{position:relative;flex:1;min-height:0}
+.top{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));left:8px;right:8px;z-index:900;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.chip{pointer-events:auto;background:rgba(20,32,43,.88);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:13px;display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--unk);flex:none}
+.vib{width:70px;height:8px;background:#0e1720;border-radius:4px;overflow:hidden}
+.vib i{display:block;height:100%;width:0;background:var(--good);transition:width .15s}
+.side{position:absolute;right:calc(8px + env(safe-area-inset-right,0px));bottom:12px;z-index:900;display:flex;flex-direction:column;gap:8px}
+.fab{width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(20,32,43,.92);color:var(--fg);font-size:20px;display:flex;align-items:center;justify-content:center}
+.legend{position:absolute;left:8px;bottom:12px;z-index:900;background:rgba(20,32,43,.88);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:12px;display:grid;gap:3px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend b{display:inline-block;width:18px;height:5px;border-radius:3px}
+.panel{background:var(--panel);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));display:grid;gap:10px}
+.row{display:flex;gap:8px;align-items:center}
+.rec{flex:1;height:52px;border:0;border-radius:14px;font-size:17px;font-weight:600;color:#fff;background:var(--accent)}
+.rec.on{background:var(--bad)}
+.btn{height:52px;min-width:52px;padding:0 12px;border-radius:14px;border:1px solid var(--line);background:#24364a;color:var(--fg);font-size:14px}
+.modes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.mode{height:40px;border-radius:10px;border:1px solid var(--line);background:#24364a;color:var(--fg);font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px}
+.mode.sel{outline:2px solid var(--fg);outline-offset:-2px}
+.stats{display:flex;gap:10px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.stats b{color:var(--fg);font-weight:600}
+.sheet{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.45);display:flex;align-items:flex-end}
+.sheet[hidden]{display:none}
+.card{width:100%;max-height:80%;overflow:auto;background:var(--panel);border-radius:16px 16px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:12px}
+.card h3{margin:0;font-size:17px}
+.card label{display:grid;gap:4px;font-size:14px;color:var(--muted)}
+.card input[type=range]{width:100%}
+.trip{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.trip .grow{flex:1;min-width:0}
+.bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:4px;background:#0e1720}
+.small{font-size:12px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:180px;z-index:3000;background:#0e1720;border:1px solid var(--line);padding:8px 12px;border-radius:10px;font-size:14px;max-width:90%;text-align:center}
+.toast[hidden]{display:none}
+.leaflet-control-attribution{font-size:10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapwrap">
+    <div id="map"></div>
+    <canvas id="cv"></canvas>
+    <div class="top">
+      <div class="chip"><span class="dot" id="gpsDot"></span><span id="gpsTxt">GPS: ожидание</span></div>
+      <div class="chip"><span id="spdTxt">0 км/ч</span></div>
+      <div class="chip">Тряска <span class="vib"><i id="vibBar"></i></span><span id="vibTxt">0.0</span></div>
+    </div>
+    <div class="legend">
+      <span><b style="background:var(--good)"></b>Хорошая</span>
+      <span><b style="background:var(--mid)"></b>Средняя</span>
+      <span><b style="background:var(--bad)"></b>Плохая</span>
+      <span><b style="background:var(--unk)"></b>Нет оценки</span>
+    </div>
+    <div class="side">
+      <button class="fab" id="bCenter" aria-label="Моё местоположение">◎</button>
+      <button class="fab" id="bTrips" aria-label="Поездки">☰</button>
+      <button class="fab" id="bSet" aria-label="Настройки">⚙</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="modes" id="modes">
+      <button class="mode sel" data-m="auto">Авто</button>
+      <button class="mode" data-m="bad"><span class="dot" style="background:var(--bad)"></span>Плохо</button>
+      <button class="mode" data-m="mid"><span class="dot" style="background:var(--mid)"></span>Средне</button>
+      <button class="mode" data-m="good"><span class="dot" style="background:var(--good)"></span>Хорошо</button>
+    </div>
+    <div class="row">
+      <button class="rec" id="bRec">▶ Начать запись</button>
+      <button class="btn" id="bDemo">Демо</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+</div>
+
+<div class="sheet" id="shTrips" hidden><div class="card">
+  <div class="row"><h3 style="flex:1">Поездки</h3><button class="btn" style="height:40px" data-close>Закрыть</button></div>
+  <div id="tripList"></div>
+  <div class="row"><button class="btn" id="bExport" style="flex:1">Экспорт GeoJSON</button><button class="btn" id="bClear" style="flex:1">Удалить все</button></div>
+  <div class="small" id="clearConfirm" hidden>Нажмите «Удалить все» ещё раз, чтобы подтвердить.</div>
+</div></div>
+
+<div class="sheet" id="shSet" hidden><div class="card">
+  <div class="row"><h3 style="flex:1">Настройки оценки</h3><button class="btn" style="height:40px" data-close>Закрыть</button></div>
+  <div class="small">Тряска — среднеквадратичное ускорение (м/с²) между точками GPS. Телефон должен стоять в держателе. Подстройте пороги под свою машину: проедьте по заведомо хорошей дороге и посмотрите на значение «Тряска».</div>
+  <label>Граница «хорошая / средняя»: <b id="t1v"></b><input type="range" id="t1" min="0.3" max="4" step="0.1"></label>
+  <label>Граница «средняя / плохая»: <b id="t2v"></b><input type="range" id="t2" min="0.8" max="8" step="0.1"></label>
+  <label>Не оценивать ниже скорости, км/ч: <b id="vminv"></b><input type="range" id="vmin" min="0" max="30" step="1"></label>
+  <label>Длина участка, м: <b id="segv"></b><input type="range" id="seg" min="5" max="50" step="5"></label>
+  <label style="display:flex;align-items:center;gap:8px;color:var(--fg)"><input type="checkbox" id="speedComp"> Учитывать скорость (на высокой скорости тряска сильнее)</label>
+  <button class="btn" id="bReset">Сбросить по умолчанию</button>
+</div></div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+let tt=null;
+const COL={good:'#22b35e',mid:'#f2c230',bad:'#e5483f',unk:'#8a96a3'};
+const DEF={t1:1.2,t2:2.6,vmin:8,seg:15,speedComp:true};
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
+};
+let cfg=Object.assign({},DEF,store.get('rm.cfg',{}));
+let trips=store.get('rm.trips',[]);
+let cur=null, recording=false, demo=null, mode='auto', follow=true, lastFix=null, lastPt=null, watchId=null, wakeLock=null;
+let acc={ss:0,n:0}, live={ss:0,n:0}, lp=null;
+
+/* ---------- map ---------- */
+const hasL=typeof window.L!=='undefined';
+let map=null, layer=null, me=null, cv=null, ctx=null, view=null;
+if(hasL){
+  map=L.map('map',{zoomControl:false,attributionControl:true}).setView([41.311,69.28],13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  layer=L.layerGroup().addTo(map);
+  me=L.circleMarker([0,0],{radius:8,color:'#fff',weight:3,fillColor:'#3d8bfd',fillOpacity:1});
+  map.on('dragstart',()=>{follow=false});
+}else{
+  $('map').style.display='none'; cv=$('cv'); cv.style.display='block'; ctx=cv.getContext('2d');
+  toast('Карта не загрузилась (нет интернета). Запись работает, трек рисуется на схеме.');
+}
+function q2c(q){return COL[q]||COL.unk}
+function addSegToMap(s){
+  if(hasL){L.polyline([[s[0],s[1]],[s[2],s[3]]],{color:q2c(s[4]),weight:7,opacity:.95,lineCap:'round'}).addTo(layer)}
+  else drawCanvas();
+}
+function redraw(){
+  if(hasL){layer.clearLayers(); allTrips().forEach(t=>{if(t.hidden)return; t.segs.forEach(s=>L.polyline([[s[0],s[1]],[s[2],s[3]]],{color:q2c(s[4]),weight:7,opacity:.95,lineCap:'round'}).addTo(layer))})}
+  else drawCanvas();
+}
+function allTrips(){return cur&&!trips.includes(cur)?trips.concat([cur]):trips}
+function drawCanvas(){
+  if(!ctx)return;
+  const r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  cv.width=r.width*dpr; cv.height=r.height*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle='#dfe5ea'; ctx.fillRect(0,0,r.width,r.height);
+  const segs=[]; allTrips().forEach(t=>{if(!t.hidden)segs.push(...t.segs)});
+  if(!segs.length&&!lastFix)return;
+  let a=Infinity,b=-Infinity,c=Infinity,d=-Infinity;
+  const pts=segs.flatMap(s=>[[s[0],s[1]],[s[2],s[3]]]); if(lastFix)pts.push([lastFix.lat,lastFix.lng]);
+  pts.forEach(p=>{a=Math.min(a,p[0]);b=Math.max(b,p[0]);c=Math.min(c,p[1]);d=Math.max(d,p[1])});
+  const k=Math.cos((a+b)/2*Math.PI/180), w=Math.max((d-c)*k,1e-4), h=Math.max(b-a,1e-4);
+  const sc=Math.min((r.width-60)/w,(r.height-60)/h);
+  const X=lng=>30+((lng-c)*k)*sc+((r.width-60)-w*sc)/2, Y=lat=>r.height-30-(lat-a)*sc-((r.height-60)-h*sc)/2;
+  ctx.strokeStyle='#c7cfd6'; ctx.lineWidth=1;
+  for(let i=0;i<r.width;i+=40){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,r.height);ctx.stroke()}
+  for(let i=0;i<r.height;i+=40){ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(r.width,i);ctx.stroke()}
+  ctx.lineCap='round'; ctx.lineWidth=7;
+  segs.forEach(s=>{ctx.strokeStyle=q2c(s[4]);ctx.beginPath();ctx.moveTo(X(s[1]),Y(s[0]));ctx.lineTo(X(s[3]),Y(s[2]));ctx.stroke()});
+  if(lastFix){ctx.fillStyle='#3d8bfd';ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(X(lastFix.lng),Y(lastFix.lat),8,0,7);ctx.fill();ctx.stroke()}
+}
+window.addEventListener('resize',()=>{if(!hasL)drawCanvas()});
+
+/* ---------- vibration ---------- */
+function onMotion(e){
+  let m=null;
+  const a=e.acceleration;
+  if(a&&a.x!=null){m=Math.hypot(a.x,a.y,a.z)}
+  else{
+    const g=e.accelerationIncludingGravity; if(!g||g.x==null)return;
+    const raw=Math.hypot(g.x,g.y,g.z); lp=lp==null?raw:lp*0.9+raw*0.1; m=raw-lp;
+  }
+  pushVib(m);
+}
+function pushVib(m){
+  if(!isFinite(m))return;
+  const v=m*m; acc.ss+=v; acc.n++; live.ss=live.ss*0.95+v*0.05; live.n=1;
+}
+function rmsOf(o){return o.n?Math.sqrt(o.ss/o.n):0}
+function classify(rms,kmh){
+  if(kmh<cfg.vmin)return 'unk';
+  let r=rms;
+  if(cfg.speedComp){r=rms/Math.sqrt(Math.max(kmh,15)/40)}
+  return r<cfg.t1?'good':r<cfg.t2?'mid':'bad';
+}
+
+/* ---------- geo ---------- */
+function dist(a,b,c,d){const R=6371000,t=Math.PI/180,x=(d-b)*t*Math.cos((a+c)/2*t),y=(c-a)*t;return Math.sqrt(x*x+y*y)*R}
+function onFix(lat,lng,accM,spd,ts){
+  lastFix={lat,lng,acc:accM};
+  const dot=$('gpsDot'); dot.style.background=accM<=15?COL.good:accM<=35?COL.mid:COL.bad;
+  $('gpsTxt').textContent='GPS ±'+Math.round(accM)+' м';
+  if(hasL){me.setLatLng([lat,lng]); if(!map.hasLayer(me))me.addTo(map); if(follow)map.setView([lat,lng],Math.max(map.getZoom(),16),{animate:false})}
+  if(!recording||accM>40){if(!hasL)drawCanvas();return}
+  if(!lastPt){lastPt={lat,lng,ts};acc={ss:0,n:0};return}
+  const dm=dist(lastPt.lat,lastPt.lng,lat,lng);
+  if(dm<cfg.seg)return;
+  const dt=Math.max((ts-lastPt.ts)/1000,0.5);
+  let kmh=spd!=null&&spd>=0?spd*3.6:dm/dt*3.6;
+  if(dm>300&&dt<5){lastPt={lat,lng,ts};acc={ss:0,n:0};return}
+  const rms=rmsOf(acc);
+  const q=mode==='auto'?classify(rms,kmh):mode;
+  const r6=v=>Math.round(v*1e6)/1e6;
+  const seg=[r6(lastPt.lat),r6(lastPt.lng),r6(lat),r6(lng),q,+rms.toFixed(2),Math.round(kmh)];
+  cur.segs.push(seg); cur.len+=dm;
+  addSegToMap(seg);
+  $('spdTxt').textContent=Math.round(kmh)+' км/ч';
+  lastPt={lat,lng,ts}; acc={ss:0,n:0};
+  if(cur.segs.length%5===0)save();
+  renderStats();
+}
+function startGPS(){
+  if(!('geolocation' in navigator)){toast('Это устройство не даёт доступ к GPS');return false}
+  watchId=navigator.geolocation.watchPosition(p=>{const c=p.coords;onFix(c.latitude,c.longitude,c.accuracy||99,c.speed,p.timestamp||Date.now())},
+    err=>{$('gpsTxt').textContent=err.code===1?'GPS: нет разрешения':'GPS: нет сигнала';$('gpsDot').style.background=COL.bad;if(err.code===1)toast('Разрешите доступ к местоположению в настройках приложения')},
+    {enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  return true;
+}
+function stopGPS(){if(watchId!=null)navigator.geolocation.clearWatch(watchId);watchId=null}
+
+/* ---------- recording ---------- */
+async function askMotion(){
+  try{if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){await DeviceMotionEvent.requestPermission()}}catch(e){}
+  window.addEventListener('devicemotion',onMotion);
+}
+async function startRec(){
+  stopDemo();
+  cur={id:Date.now(),start:new Date().toISOString(),segs:[],len:0};
+  trips.push(cur); recording=true; lastPt=null; follow=true;
+  await askMotion(); startGPS();
+  try{if(navigator.wakeLock)wakeLock=await navigator.wakeLock.request('screen')}catch(e){}
+  if(window.AndroidBridge&&AndroidBridge.keepScreenOn)try{AndroidBridge.keepScreenOn(true)}catch(e){}
+  ui();
+}
+function stopRec(){
+  recording=false; stopGPS(); window.removeEventListener('devicemotion',onMotion);
+  if(wakeLock){try{wakeLock.release()}catch(e){} wakeLock=null}
+  if(cur&&!cur.segs.length){trips=trips.filter(t=>t!==cur)}
+  else if(cur){toast('Поездка сохранена: '+(cur.len/1000).toFixed(2)+' км')}
+  cur=null; save(); ui(); startGPSidle();
+}
+function startGPSidle(){if(watchId==null&&!demo)startGPS()}
+function save(){
+  if(!store.set('rm.trips',trips))toast('Не хватает места для сохранения. Экспортируйте и удалите старые поездки.');
+}
+
+/* ---------- demo ---------- */
+function stopDemo(){if(demo){clearInterval(demo.t);demo=null;recording=false;window.removeEventListener('devicemotion',onMotion);ui()}}
+function startDemo(){
+  if(recording&&!demo)return;
+  if(demo){stopDemo();if(cur&&!cur.segs.length)trips=trips.filter(t=>t!==cur);cur=null;save();ui();startGPSidle();return}
+  stopGPS();
+  cur={id:Date.now(),start:new Date().toISOString(),segs:[],len:0,demo:true}; trips.push(cur);
+  recording=true; lastPt=null; follow=true;
+  const base=lastFix?[lastFix.lat,lastFix.lng]:[41.3111,69.2797];
+  let i=0, lat=base[0], lng=base[1], hd=0.6, ts=Date.now();
+  const zones=[[0,60,.6],[60,110,2.0],[110,150,4.2],[150,210,.7],[210,250,3.2],[250,330,.9]];
+  demo={t:setInterval(()=>{
+    i++; if(i>330){stopDemo();cur=null;save();ui();startGPSidle();toast('Демо закончено. Это пример, а не ваша поездка.');return}
+    hd+=Math.sin(i/23)*0.05; const step=0.00012;
+    lat+=Math.cos(hd)*step; lng+=Math.sin(hd)*step/Math.cos(lat*Math.PI/180); ts+=1000;
+    const z=zones.find(z=>i>=z[0]&&i<z[1])||[0,0,1];
+    for(let k=0;k<50;k++)pushVib((Math.random()*2-1)*z[2]*1.7);
+    onFix(lat,lng,6,12.5,ts);
+    updLive();
+  },60)};
+  ui(); toast('Демо: имитация поездки с разными участками дороги');
+}
+
+/* ---------- ui ---------- */
+function updLive(){
+  const r=Math.sqrt(live.ss);
+  $('vibTxt').textContent=r.toFixed(1);
+  const p=Math.min(r/(cfg.t2*1.4),1)*100; const b=$('vibBar'); b.style.width=p+'%';
+  b.style.background=r<cfg.t1?COL.good:r<cfg.t2?COL.mid:COL.bad;
+}
+setInterval(()=>{if(!demo)updLive()},250);
+function sumQ(segs){const o={good:0,mid:0,bad:0,unk:0,tot:0};segs.forEach(s=>{const d=dist(s[0],s[1],s[2],s[3]);o[s[4]]=(o[s[4]]||0)+d;o.tot+=d});return o}
+function pct(o,k){return o.tot?Math.round(o[k]/o.tot*100):0}
+function renderStats(){
+  const segs=cur?cur.segs:trips.flatMap(t=>t.segs); const o=sumQ(segs);
+  const lab=cur?'Эта поездка':'Всего';
+  $('stats').innerHTML='';
+  const add=(t,v,c)=>{const s=document.createElement('span');if(c){const d=document.createElement('span');d.className='dot';d.style.cssText='display:inline-block;width:8px;height:8px;margin-right:4px;background:'+c;s.appendChild(d)}s.appendChild(document.createTextNode(t+' '));const b=document.createElement('b');b.textContent=v;s.appendChild(b);$('stats').appendChild(s)};
+  add(lab+':',(o.tot/1000).toFixed(2)+' км');
+  add('хор.',pct(o,'good')+'%',COL.good); add('сред.',pct(o,'mid')+'%',COL.mid); add('плох.',pct(o,'bad')+'%',COL.bad);
+}
+function ui(){
+  const b=$('bRec');
+  if(recording&&!demo){b.textContent='■ Остановить запись';b.classList.add('on')}else{b.textContent='▶ Начать запись';b.classList.remove('on')}
+  b.disabled=!!demo; b.style.opacity=demo?.5:1;
+  $('bDemo').textContent=demo?'Стоп демо':'Демо';
+  renderStats();
+}
+$('bRec').onclick=()=>{recording?stopRec():startRec()};
+$('bDemo').onclick=startDemo;
+$('modes').onclick=e=>{const t=e.target.closest('.mode');if(!t)return;mode=t.dataset.m;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('sel',m===t));
+  if(mode!=='auto')toast('Ручная разметка: новые участки будут '+({bad:'красными',mid:'жёлтыми',good:'зелёными'})[mode])};
+$('bCenter').onclick=()=>{follow=true;if(lastFix&&hasL)map.setView([lastFix.lat,lastFix.lng],17);else if(!lastFix)toast('Ждём сигнал GPS')};
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('.sheet').hidden=true);
+document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{if(e.target===s)s.hidden=true}));
+
+function fmtDate(iso){try{return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return iso}}
+function renderTrips(){
+  const box=$('tripList'); box.innerHTML='';
+  if(!trips.length){box.innerHTML='<div class="small">Пока нет поездок. Нажмите «Начать запись» и поезжайте — трек появится на карте.</div>';return}
+  trips.slice().reverse().forEach(t=>{
+    const o=sumQ(t.segs), row=document.createElement('div'); row.className='trip';
+    const g=document.createElement('div'); g.className='grow';
+    const tt=document.createElement('div'); tt.textContent=fmtDate(t.start)+(t.demo?' · демо':'')+' · '+(o.tot/1000).toFixed(2)+' км'; g.appendChild(tt);
+    const bar=document.createElement('div'); bar.className='bar';
+    ['good','mid','bad','unk'].forEach(k=>{const i=document.createElement('i');i.style.cssText='display:block;height:100%;width:'+(o.tot?o[k]/o.tot*100:0)+'%;background:'+COL[k];bar.appendChild(i)});
+    g.appendChild(bar); row.appendChild(g);
+    const vis=document.createElement('button'); vis.className='btn'; vis.style.height='38px'; vis.textContent=t.hidden?'Показать':'Скрыть';
+    vis.onclick=()=>{t.hidden=!t.hidden;save();redraw();renderTrips()};
+    const show=document.createElement('button'); show.className='btn'; show.style.height='38px'; show.textContent='На карте';
+    show.onclick=()=>{t.hidden=false;save();redraw();if(hasL&&t.segs.length){follow=false;map.fitBounds(t.segs.flatMap(s=>[[s[0],s[1]],[s[2],s[3]]]),{padding:[30,30]})}$('shTrips').hidden=true};
+    const del=document.createElement('button'); del.className='btn'; del.style.height='38px'; del.textContent='✕'; del.setAttribute('aria-label','Удалить поездку');
+    del.onclick=()=>{if(t===cur){toast('Сначала остановите запись');return}trips=trips.filter(x=>x!==t);save();redraw();renderTrips();renderStats()};
+    row.append(show,vis,del); box.appendChild(row);
+  });
+}
+$('bTrips').onclick=()=>{renderTrips();$('clearConfirm').hidden=true;$('shTrips').hidden=false};
+let clearArm=false;
+$('bClear').onclick=()=>{
+  if(!clearArm){clearArm=true;$('clearConfirm').hidden=false;setTimeout(()=>{clearArm=false;$('clearConfirm').hidden=true},4000);return}
+  if(recording){toast('Сначала остановите запись');return}
+  trips=[];save();redraw();renderTrips();renderStats();clearArm=false;$('clearConfirm').hidden=true;toast('Все поездки удалены');
+};
+$('bExport').onclick=()=>{
+  const feats=[];
+  trips.forEach(t=>t.segs.forEach(s=>feats.push({type:'Feature',geometry:{type:'LineString',coordinates:[[s[1],s[0]],[s[3],s[2]]]},
+    properties:{trip:t.start,quality:{good:'хорошая',mid:'средняя',bad:'плохая',unk:'нет оценки'}[s[4]],q:s[4],vibration_rms:s[5],speed_kmh:s[6],stroke:q2c(s[4]),'stroke-width':5}})));
+  if(!feats.length){toast('Нечего экспортировать');return}
+  const txt=JSON.stringify({type:'FeatureCollection',features:feats});
+  const name='roadmark_'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.geojson';
+  if(window.AndroidBridge&&AndroidBridge.saveFile){try{const r=AndroidBridge.saveFile(name,txt);toast(r||('Сохранено: '+name))}catch(e){toast('Не удалось сохранить файл')}return}
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/geo+json'}));a.download=name;document.body.appendChild(a);a.click();a.remove();toast('Файл '+name+' скачан')}catch(e){toast('Браузер не дал скачать файл')}
+};
+
+function bindSet(){
+  const f=(id,suf)=>{const el=$(id);el.value=cfg[id];$(id+'v').textContent=cfg[id]+suf;el.oninput=()=>{cfg[id]=+el.value;$(id+'v').textContent=el.value+suf;store.set('rm.cfg',cfg)}};
+  f('t1',' м/с²');f('t2',' м/с²');f('vmin',' км/ч');f('seg',' м');
+  const sc=$('speedComp'); sc.checked=cfg.speedComp; sc.onchange=()=>{cfg.speedComp=sc.checked;store.set('rm.cfg',cfg)};
+}
+$('bSet').onclick=()=>{bindSet();$('shSet').hidden=false};
+$('bReset').onclick=()=>{cfg=Object.assign({},DEF);store.set('rm.cfg',cfg);bindSet();toast('Настройки сброшены')};
+
+function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
+window.RoadMark={onNativeResume(){if(!recording)startGPSidle()}};
+
+redraw(); ui(); startGPSidle();
+})();
+</script>
+</body>
+</html>
